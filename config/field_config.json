@@ -1,0 +1,106 @@
+{
+  "jd_id": {
+    "labels": [
+      "job id",
+      "jd id",
+      "req id",
+      "reqid",
+      "requirement id",
+      "position id",
+      "positionid",
+      "jobid",
+      "jdid",
+      "job code",
+      "role id",
+      "opening id",
+      "job reference",
+      "ref no",
+      "reference id"
+    ],
+  "patterns": [
+    "(?i)(job[ _-]?id|jd[ _-]?id|req[ _-]?id|requirement[ _-]?id|position[ _-]?id|job[ _-]?code|role[ _-]?id|opening[ _-]?id|job[ _-]?reference|ref[ _-]?no|reference[ _-]?id)\\s*[:\\-]?\\s*([a-zA-Z0-9/_-]+)"
+  ]
+  },
+  "role": {
+    "labels": [
+      "role",
+      "job title",
+      "position",
+      "designation"
+    ],
+    "patterns": [
+      "(?i)(role|position|job title|designation)\\s*[:\\-]?\\s*(.+)",
+      "(?i)hiring\\s+(for\\s+)?(an?\\s+)?([a-zA-Z0-9\\s\\.\\+\\-/]{3,50}?)\\s+(with|who|to|having|in|on)"
+    ]
+  },
+  "yoe": {
+    "labels": [
+      "yoe",
+      "years of experience",
+      "total experience",
+      "experience required",
+      "exp"
+    ],
+    "patterns": [
+      "(\\d{1,2})\\s*(?:to|–|-|—)\\s*(\\d{1,2})\\s*(years|yrs)?",
+      "(\\d{1,2})\\s*(\\+)?\\s*(years|yrs)",
+      "minimum\\s+(\\d{1,2})\\s*(years|yrs)"
+    ]
+  },
+  "notice_period": {
+    "labels": [
+      "notice period",
+      "np",
+      "join within",
+      "availability",
+      "expected to join",
+      "start within",
+      "time to fill",
+      "time to close",
+      "joining timeline"
+    ],
+    "patterns": [
+      "immediate",
+      "(\\d{1,2})\\s*(day|week|month)s?",
+      "within\\s+(\\d{1,2})\\s+(days|weeks|months)"
+    ]
+  },
+  "num_positions": {
+    "labels": [
+      "number of positions",
+      "openings",
+      "positions",
+      "required headcount",
+      "looking for",
+      "we need",
+      "there are"
+    ],
+    "patterns": [
+      "(\\d{1,2})\\s+(open\\s+)?positions?",
+      "(number of positions)\\s*[:\\-]?\\s*(\\d{1,2})"
+    ]
+  },
+  "work_location": {
+    "labels": [
+      "location",
+      "job location",
+      "base",
+      "work location"
+    ],
+    "patterns": [
+      "(chennai|bangalore|bengaluru|mumbai|hyderabad|pune|delhi|gurgaon|noida|remote|onsite|hybrid)"
+    ]
+  },
+  "shift_timing": {
+    "labels": [
+      "shift",
+      "work hours",
+      "shift timing",
+      "work timings",
+      "working hours"
+    ],
+    "patterns": [
+      "(\\bus\\b|\\buk\\b|rotational|night|day|general|flexible)"
+    ]
+  }
+}

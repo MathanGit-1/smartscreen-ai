@@ -1,0 +1,9 @@
+gradio==3.50.2
+sentence-transformers
+pdfplumber
+scikit-learn
+nltk
+numpy==1.26.4
+gradio==3.50.2
+gensim==4.3.3
+spacy==3.8.7
