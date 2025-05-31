@@ -1,8 +1,15 @@
 import gradio as gr
 import os
 from io import BytesIO
+import spacy
 
-os.system("python -m spacy download en_core_web_sm")
+try:
+    nlp = spacy.load("en_core_web_sm")
+except:
+    import subprocess
+    subprocess.run(["python", "-m", "spacy", "download", "en_core_web_sm"])
+    nlp = spacy.load("en_core_web_sm")
+
 
 from jd_parser.extractor import extract_text_from_pdf, extract_text_from_docx, extract_text_from_txt
 from jd_parser.field_extractor import extract_fields_from_text
@@ -72,14 +79,21 @@ def process_jd(input_mode, file, text_input):
 # === JD vs Multiple Resume Matcher ===
 def compare_jd_multiple_resumes(jd_file, resume_files):
     if not jd_file or not resume_files:
-        return [["❌ JD or Resumes missing", "", "", "", ""]]
+        return [["❌ JD or Resumes missing", "", "", "", "", ""]]
 
     jd_text = extract_text(jd_file)
     if jd_text.startswith("❌"):
-        return [[jd_text, "", "", "", ""]]
+        return [[jd_text, "", "", "", "", ""]]
+
+    # ✅ Precompute JD embedding only once
+    from resume_matcher.matcher import model  # import shared model
+    jd_embedding = model.encode(jd_text, convert_to_numpy=True)
 
     results = []
     resume_files = resume_files if isinstance(resume_files, list) else [resume_files]
+
+    import time
+    start = time.time()
 
     for resume_file in resume_files:
         resume_text = extract_text(resume_file)
@@ -87,13 +101,14 @@ def compare_jd_multiple_resumes(jd_file, resume_files):
             results.append([
                 os.path.basename(resume_file.name),
                 "❌ Error",
+                "",
                 0,
                 resume_text,
-                "No"
+                "❌"
             ])
             continue
 
-        result = ai_compare_jd_resume(jd_text, resume_text)
+        result = ai_compare_jd_resume(jd_text, resume_text, jd_embedding=jd_embedding)
         results.append([
             os.path.basename(resume_file.name),
             result["mobile"],
@@ -103,6 +118,7 @@ def compare_jd_multiple_resumes(jd_file, resume_files):
             result["shortlist"]
         ])
 
+    print(f"⌛ Matched {len(resume_files)} resumes in {time.time() - start:.2f} seconds")
     results = sorted(results, key=lambda x: x[3], reverse=True)
     return results
 
@@ -161,5 +177,4 @@ with gr.Blocks(title="SmartScreen.AI") as app:
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 7860))  # fallback to 7860 locally
-    app.queue()
     app.launch(server_name="0.0.0.0", server_port=port)
