@@ -150,7 +150,7 @@ with gr.Blocks(title="SmartScreen.AI") as app:
                 submit_btn.click(fn=process_jd, inputs=[input_mode, file_input, text_input], outputs=[title_out, summary_out])
 
     def validate(code):
-        if code == "ey2024":
+        if code == "1357":
             return gr.update(visible=True), gr.update(visible=False), gr.update(visible=False)
         else:
             return gr.update(visible=False), gr.update(visible=True), gr.update(visible=True, value="❌ Invalid code. Please try again.")
