@@ -158,4 +158,5 @@ with gr.Blocks(title="SmartScreen.AI") as app:
     login_btn.click(fn=validate, inputs=access_code, outputs=[main_ui, login_ui, login_error])
 
 if __name__ == "__main__":
-    app.launch(server_name="0.0.0.0", server_port=8080, queue=True)
+    port = int(os.environ.get("PORT", 7860))  # fallback to 7860 locally
+    app.launch(server_name="0.0.0.0", server_port=port, queue=True)
