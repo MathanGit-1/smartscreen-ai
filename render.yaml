@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: smartscreen-ai
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt && python -m spacy download en_core_web_sm
+    startCommand: python app.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.10

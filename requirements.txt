@@ -6,3 +6,8 @@ numpy==1.26.4
 gradio>=4.2.0
 gensim==4.3.3
 spacy==3.8.7
+# File parsing
+python-docx  # for .docx
+PyMuPDF       # for PDF (imported as `fitz`)
+# Utility
+pandas
