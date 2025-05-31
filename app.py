@@ -3,15 +3,6 @@ import os
 from io import BytesIO
 import spacy
 import time
-import concurrent.futures
-from resume_matcher.matcher import compare_jd_resume as ai_compare_jd_resume, model  # shared model
-from jd_parser.extractor import extract_text_from_pdf, extract_text_from_docx, extract_text_from_txt
-from jd_parser.field_extractor import extract_fields_from_text
-from jd_parser.skill_matcher import match_skills
-
-
-def clean_skills(raw_skills):
-    return sorted(set(s.strip().title() for s in raw_skills))
 
 try:
     nlp = spacy.load("en_core_web_sm")
@@ -20,6 +11,14 @@ except:
     subprocess.run(["python", "-m", "spacy", "download", "en_core_web_sm"])
     nlp = spacy.load("en_core_web_sm")
 
+
+from jd_parser.extractor import extract_text_from_pdf, extract_text_from_docx, extract_text_from_txt
+from jd_parser.field_extractor import extract_fields_from_text
+from jd_parser.skill_matcher import match_skills
+from resume_matcher.matcher import compare_jd_resume as ai_compare_jd_resume
+
+def clean_skills(raw_skills):
+    return sorted(set(s.strip().title() for s in raw_skills))
 
 # ✅ Fully in-memory extractor with error handling
 def extract_text(file):
@@ -35,10 +34,13 @@ def extract_text(file):
         if not raw_bytes:
             result = "❌ Failed to read file: File stream is empty."
         elif ext == ".pdf":
+            from jd_parser.extractor import extract_text_from_pdf
             result = extract_text_from_pdf(BytesIO(raw_bytes))
         elif ext == ".docx":
+            from jd_parser.extractor import extract_text_from_docx
             result = extract_text_from_docx(BytesIO(raw_bytes))
         elif ext == ".txt":
+            from jd_parser.extractor import extract_text_from_txt
             result = extract_text_from_txt(BytesIO(raw_bytes))
         else:
             result = "❌ Unsupported file type"
@@ -82,17 +84,22 @@ def process_jd(input_mode, file, text_input):
     title = f"📌 JD Summary: {source} | Role: {fields['role'] or 'N/A'}"
     return title, summary
 
-
 # === JD vs Multiple Resume Matcher ===
+import concurrent.futures
+import time
+from resume_matcher.matcher import model  # shared model
+
 def compare_jd_multiple_resumes(jd_file, resume_files):
     if not jd_file or not resume_files:
-        return [["❌ JD or Resumes missing", "", "", "", "", ""]], "❌ JD or Resumes missing."
+        return [["❌ JD or Resumes missing", "", "", "", "", ""]]
 
     jd_text = extract_text(jd_file)
     if jd_text.startswith("❌"):
-        return [[jd_text, "", "", "", "", ""]], jd_text
+        return [[jd_text, "", "", "", "", ""]]
 
+    # ✅ Precompute JD embedding only once
     jd_embedding = model.encode(jd_text, convert_to_numpy=True)
+
     resume_files = resume_files if isinstance(resume_files, list) else [resume_files]
 
     def process_resume(resume_file):
@@ -119,11 +126,9 @@ def compare_jd_multiple_resumes(jd_file, resume_files):
     start = time.time()
     with concurrent.futures.ThreadPoolExecutor() as executor:
         results = list(executor.map(process_resume, resume_files))
-    elapsed = time.time() - start
-    print(f"✅ Compared and ranked {len(resume_files)} resumes in {elapsed:.2f} seconds")
+    print(f"⌛ Matched {len(resume_files)} resumes in {time.time() - start:.2f} seconds")
 
-    summary = f"✅ Compared and ranked **{len(resume_files)}** resumes in **{elapsed:.2f} seconds**."
-    return sorted(results, key=lambda x: x[3], reverse=True), summary
+    return sorted(results, key=lambda x: x[3], reverse=True)
 
 
 # === Gradio App ===
@@ -144,14 +149,15 @@ with gr.Blocks(title="SmartScreen.AI") as app:
                 jd_file = gr.File(label="📁 Upload JD", file_types=[".pdf", ".docx", ".txt"])
                 resume_files = gr.File(label="📄 Upload Resumes", file_types=[".pdf", ".docx", ".txt"], file_count="multiple")
                 compare_btn = gr.Button("Compare and Rank")
-                result_grid = gr.Dataframe(headers=["Resume", "Mobile", "Email", "Score (/10)", "Matching Skills", "Shortlist?"], row_count=3)
-                summary_markdown = gr.Markdown()
-                compare_btn.click(compare_jd_multiple_resumes, inputs=[jd_file, resume_files], outputs=[result_grid, summary_markdown])
+                result_grid = gr.Dataframe(headers=["Resume", "Mobile","Email", "Score (/10)", "Matching Skills", "Shortlist?"], row_count=3)
+                compare_btn.click(compare_jd_multiple_resumes, inputs=[jd_file, resume_files], outputs=result_grid)
+                # 👇 Add this line below the grid
                 gr.Markdown("""
                 <div style='background-color:#f0f0f0; padding:10px; border-radius:8px; text-align:center; font-weight:bold; color:#333; font-size:15px;'>
                 🔐 Files are processed in-memory and never stored.
                 </div>
                 """)
+                # Reset grid when JD or resumes are cleared
                 jd_file.change(fn=lambda _: [], inputs=jd_file, outputs=result_grid)
                 resume_files.change(fn=lambda _: [], inputs=resume_files, outputs=result_grid)
 
@@ -171,7 +177,7 @@ with gr.Blocks(title="SmartScreen.AI") as app:
                 submit_btn.click(fn=process_jd, inputs=[input_mode, file_input, text_input], outputs=[title_out, summary_out])
 
     def validate(code):
-        if code == "1234":
+        if code == "ey2024":
             return gr.update(visible=True), gr.update(visible=False), gr.update(visible=False)
         else:
             return gr.update(visible=False), gr.update(visible=True), gr.update(visible=True, value="❌ Invalid code. Please try again.")
@@ -179,5 +185,5 @@ with gr.Blocks(title="SmartScreen.AI") as app:
     login_btn.click(fn=validate, inputs=access_code, outputs=[main_ui, login_ui, login_error])
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 7860))
+    port = int(os.environ.get("PORT", 7860))  # fallback to 7860 locally
     app.launch(server_name="0.0.0.0", server_port=port)
