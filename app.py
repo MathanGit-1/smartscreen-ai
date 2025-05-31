@@ -2,6 +2,7 @@ import gradio as gr
 import os
 from io import BytesIO
 import spacy
+import time
 
 try:
     nlp = spacy.load("en_core_web_sm")
@@ -21,6 +22,7 @@ def clean_skills(raw_skills):
 
 # ✅ Fully in-memory extractor with error handling
 def extract_text(file):
+    start = time.time()
     ext = os.path.splitext(file.name)[-1].lower()
     try:
         if isinstance(file, str) or os.path.exists(file.name):
@@ -30,17 +32,23 @@ def extract_text(file):
             raw_bytes = file.read()
 
         if not raw_bytes:
-            return "❌ Failed to read file: File stream is empty."
-        if ext == ".pdf":
-            return extract_text_from_pdf(BytesIO(raw_bytes))
+            result = "❌ Failed to read file: File stream is empty."
+        elif ext == ".pdf":
+            from jd_parser.extractor import extract_text_from_pdf
+            result = extract_text_from_pdf(BytesIO(raw_bytes))
         elif ext == ".docx":
-            return extract_text_from_docx(BytesIO(raw_bytes))
+            from jd_parser.extractor import extract_text_from_docx
+            result = extract_text_from_docx(BytesIO(raw_bytes))
         elif ext == ".txt":
-            return extract_text_from_txt(BytesIO(raw_bytes))
+            from jd_parser.extractor import extract_text_from_txt
+            result = extract_text_from_txt(BytesIO(raw_bytes))
         else:
-            return "❌ Unsupported file type"
+            result = "❌ Unsupported file type"
     except Exception as e:
-        return f"❌ Failed to read file: {str(e)}"
+        result = f"❌ Failed to read file: {str(e)}"
+
+    print(f"📄 Extracted {file.name} in {time.time() - start:.2f} seconds")
+    return result
 
 
 # === JD Parser ===
@@ -77,6 +85,10 @@ def process_jd(input_mode, file, text_input):
     return title, summary
 
 # === JD vs Multiple Resume Matcher ===
+import concurrent.futures
+import time
+from resume_matcher.matcher import model  # shared model
+
 def compare_jd_multiple_resumes(jd_file, resume_files):
     if not jd_file or not resume_files:
         return [["❌ JD or Resumes missing", "", "", "", "", ""]]
@@ -86,41 +98,38 @@ def compare_jd_multiple_resumes(jd_file, resume_files):
         return [[jd_text, "", "", "", "", ""]]
 
     # ✅ Precompute JD embedding only once
-    from resume_matcher.matcher import model  # import shared model
     jd_embedding = model.encode(jd_text, convert_to_numpy=True)
 
-    results = []
     resume_files = resume_files if isinstance(resume_files, list) else [resume_files]
 
-    import time
-    start = time.time()
-
-    for resume_file in resume_files:
+    def process_resume(resume_file):
         resume_text = extract_text(resume_file)
         if resume_text.startswith("❌"):
-            results.append([
+            return [
                 os.path.basename(resume_file.name),
                 "❌ Error",
                 "",
                 0,
                 resume_text,
                 "❌"
-            ])
-            continue
-
+            ]
         result = ai_compare_jd_resume(jd_text, resume_text, jd_embedding=jd_embedding)
-        results.append([
+        return [
             os.path.basename(resume_file.name),
             result["mobile"],
             result["email"],
             result["score"],
             ", ".join(result["strengths"]),
             result["shortlist"]
-        ])
+        ]
 
+    start = time.time()
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        results = list(executor.map(process_resume, resume_files))
     print(f"⌛ Matched {len(resume_files)} resumes in {time.time() - start:.2f} seconds")
-    results = sorted(results, key=lambda x: x[3], reverse=True)
-    return results
+
+    return sorted(results, key=lambda x: x[3], reverse=True)
+
 
 # === Gradio App ===
 with gr.Blocks(title="SmartScreen.AI") as app:
