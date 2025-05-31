@@ -161,4 +161,5 @@ with gr.Blocks(title="SmartScreen.AI") as app:
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 7860))  # fallback to 7860 locally
-    app.launch(server_name="0.0.0.0", server_port=port, queue=True)
+    app.queue()
+    app.launch(server_name="0.0.0.0", server_port=port)
