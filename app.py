@@ -150,7 +150,7 @@ with gr.Blocks(title="SmartScreen.AI") as app:
                 submit_btn.click(fn=process_jd, inputs=[input_mode, file_input, text_input], outputs=[title_out, summary_out])
 
     def validate(code):
-        if code == "1357":
+        if code == "ey2024":
             return gr.update(visible=True), gr.update(visible=False), gr.update(visible=False)
         else:
             return gr.update(visible=False), gr.update(visible=True), gr.update(visible=True, value="❌ Invalid code. Please try again.")
@@ -158,4 +158,4 @@ with gr.Blocks(title="SmartScreen.AI") as app:
     login_btn.click(fn=validate, inputs=access_code, outputs=[main_ui, login_ui, login_error])
 
 if __name__ == "__main__":
-    app.launch(server_name="0.0.0.0", server_port=7860)
+    app.launch(server_name="0.0.0.0", server_port=8080, queue=True)
