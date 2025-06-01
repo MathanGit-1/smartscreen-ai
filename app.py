@@ -13,20 +13,6 @@ from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 from sentence_transformers import SentenceTransformer
 
-# ========== FastAPI Setup (Must be first) ==========
-app = FastAPI()
-
-@app.get("/download")
-def download_excel():
-    excel_io, filename = export_to_excel_memory()
-    if not excel_io:
-        return {"error": "No data to export"}
-    return StreamingResponse(
-        excel_io,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
-    )
-
 # ========== Local Modules ==========
 from jd_parser.extractor import extract_text_from_pdf, extract_text_from_docx, extract_text_from_txt
 from jd_parser.field_extractor import extract_fields_from_text
@@ -34,7 +20,7 @@ from jd_parser.skill_matcher import match_skills
 from resume_matcher.matcher import compare_jd_resume as ai_compare_jd_resume
 
 # ========== Environment Setup ==========
-os.environ["CUDA_VISIBLE_DEVICES"] = ""
+os.environ["CUDA_VISIBLE_DEVICES"] = ""  # Disable GPU for Hugging Face CPU runtime
 print(f"\n===== SmartScreen.AI Launched at {datetime.now()} =====\n")
 
 try:
@@ -51,7 +37,7 @@ model.encode(["SmartScreen.AI Warm-up"], convert_to_tensor=True)
 # ========== Global State ==========
 current_data = []
 
-# ========== Core Functions ==========
+# ========== Core Logic ==========
 def clean_skills(raw_skills):
     return sorted(set(s.strip().title() for s in raw_skills))
 
@@ -157,7 +143,7 @@ def compare_jd_multiple_resumes(jd_file, resume_files):
     current_data = sorted(results, key=lambda x: x[3], reverse=True)
     return current_data, duration_msg
 
-# ========== Gradio UI ==========
+# ========== Gradio Blocks ==========
 with gr.Blocks(title="SmartScreen.AI") as main_app:
     with gr.Group(visible=True) as login_ui:
         access_code = gr.Textbox(label="🔐 Enter Access Code", type="password")
@@ -237,8 +223,22 @@ with gr.Blocks(title="SmartScreen.AI") as main_app:
 
     login_btn.click(fn=validate, inputs=access_code, outputs=[main_ui, login_ui, login_error])
 
-# ========== Mount Gradio App ==========
-app = gr.mount_gradio_app(app, main_app, path="/")
+# ========== Hugging Face Compatible Mount ==========
+def create_app():
+    fastapi_app = FastAPI()
 
-if __name__ == "__main__":
-    pass  # This line helps prevent early termination in Spaces runtime
+    @fastapi_app.get("/download")
+    def download():
+        excel_io, filename = export_to_excel_memory()
+        if not excel_io:
+            return {"error": "No data to export"}
+        return StreamingResponse(
+            excel_io,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+        )
+
+    return gr.mount_gradio_app(fastapi_app, main_app, path="/")
+
+# ✅ Final app required by Hugging Face runtime
+app = create_app()
