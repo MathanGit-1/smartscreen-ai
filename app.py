@@ -241,8 +241,3 @@ def download_excel():
     )
 
 app = gr.mount_gradio_app(app, main_app, path="/")
-
-# ✅ Add this for LOCAL testing only
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=7860)
