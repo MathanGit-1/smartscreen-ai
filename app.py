@@ -9,8 +9,6 @@ import concurrent.futures
 import gradio as gr
 import pandas as pd
 import spacy
-from fastapi import FastAPI
-from fastapi.responses import StreamingResponse
 from sentence_transformers import SentenceTransformer
 
 # ========== Local Modules ==========
@@ -20,7 +18,7 @@ from jd_parser.skill_matcher import match_skills
 from resume_matcher.matcher import compare_jd_resume as ai_compare_jd_resume
 
 # ========== Environment Setup ==========
-os.environ["CUDA_VISIBLE_DEVICES"] = ""  # Disable GPU for Hugging Face CPU runtime
+os.environ["CUDA_VISIBLE_DEVICES"] = ""
 print(f"\n===== SmartScreen.AI Launched at {datetime.now()} =====\n")
 
 try:
@@ -37,7 +35,7 @@ model.encode(["SmartScreen.AI Warm-up"], convert_to_tensor=True)
 # ========== Global State ==========
 current_data = []
 
-# ========== Core Logic ==========
+# ========== Core Functions ==========
 def clean_skills(raw_skills):
     return sorted(set(s.strip().title() for s in raw_skills))
 
@@ -58,22 +56,6 @@ def extract_text(file):
     except Exception as e:
         return f"❌ Failed to read file: {str(e)}"
 
-def export_to_excel_memory():
-    global current_data
-    if not current_data:
-        return None, None
-
-    headers = ["Resume", "Mobile", "Email", "Score (/10)", "Matching Skills", "Match Recommendation"]
-    df = pd.DataFrame(current_data, columns=headers)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"TopMatches_{timestamp}.xlsx"
-    print(f"📊 Exporting results to {filename} (in-memory)...")
-
-    excel_io = BytesIO()
-    df.to_excel(excel_io, index=False, engine='openpyxl')
-    excel_io.seek(0)
-    return excel_io, filename
-
 def process_jd(input_mode, file, text_input):
     if input_mode == "Upload File" and file:
         text = extract_text(file)
@@ -83,13 +65,10 @@ def process_jd(input_mode, file, text_input):
         source = "Manual Input"
     else:
         return "❌ Please provide a JD input", ""
-
     if text.startswith("❌"):
         return "❌ Error reading JD file", text
-
     fields = extract_fields_from_text(text)
     skills = clean_skills(match_skills(text))
-
     summary = f"""
 **JD ID**: {fields['jd_id']}  
 **Role**: {fields['role'] or 'Not available'}  
@@ -137,13 +116,16 @@ def compare_jd_multiple_resumes(jd_file, resume_files):
     start = time.time()
     with concurrent.futures.ThreadPoolExecutor() as executor:
         results = list(executor.map(process_resume, resume_files))
-    duration_msg = f"✅ Ranked {len(results)} resumes in {time.time() - start:.2f} seconds"
-    print(duration_msg)
+    elapsed = time.time() - start
+
+    # 🧪 Final message
+    message = f"✅ Ranked {len(results)} resumes in {elapsed:.2f} seconds"
+    print(message)
 
     current_data = sorted(results, key=lambda x: x[3], reverse=True)
-    return current_data, duration_msg
+    return current_data, message
 
-# ========== Gradio Blocks ==========
+# ========== Gradio UI ==========
 with gr.Blocks(title="SmartScreen.AI") as main_app:
     with gr.Group(visible=True) as login_ui:
         access_code = gr.Textbox(label="🔐 Enter Access Code", type="password")
@@ -153,92 +135,36 @@ with gr.Blocks(title="SmartScreen.AI") as main_app:
     with gr.Group(visible=False) as main_ui:
         with gr.Tabs():
             with gr.TabItem("Resume Match Scores for Selected JD"):
-                gr.Markdown("<h3 style='text-align: center;'>🧠 AI-powered Resume Ranking</h3>")
+                gr.Markdown("### 🧠 AI-powered Resume Ranking")
 
                 jd_file = gr.File(label="📁 Upload JD", file_types=[".pdf", ".docx", ".txt"])
                 resume_files = gr.File(label="📄 Upload Resumes", file_types=[".pdf", ".docx", ".txt"], file_count="multiple")
-
-                compare_btn = gr.Button("Compare and Rank", variant="primary")
+                compare_btn = gr.Button("🔍 Compare and Rank", variant="primary")
                 result_grid = gr.Dataframe(headers=["Resume", "Mobile", "Email", "Score (/10)", "Matching Skills", "Match Recommendation"], row_count=3)
-                status_message = gr.Markdown(visible=True)
+                status_message = gr.Markdown()
 
-                compare_btn.click(compare_jd_multiple_resumes, inputs=[jd_file, resume_files], outputs=[result_grid, status_message])
-
-                download_html = gr.HTML("""
-                <button onclick=\"
-                    fetch('/download')
-                    .then(resp => resp.blob())
-                    .then(blob => {
-                        const url = window.URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = 'TopMatches.xlsx';
-                        a.click();
-                        window.URL.revokeObjectURL(url);
-                    });
-                \"
-                style=\"
-                display: flex;
-                align-items: center;
-                gap: 8px;
-                padding: 10px 20px;
-                background-color: #1D6F42;
-                color: white;
-                font-weight: bold;
-                border: none;
-                border-radius: 6px;
-                cursor: pointer;
-                font-size: 15px;\"
-        >
-            <img src=\"https://img.icons8.com/color/24/000000/ms-excel.png\" style=\"width:20px; height:20px;\" />
-            Download Excel
-        </button>
-                """)
-
-                gr.Markdown("<div style='text-align:center; font-size:14px;'>🔐 In-memory only. No data stored.</div>")
+                compare_btn.click(fn=compare_jd_multiple_resumes, inputs=[jd_file, resume_files], outputs=[result_grid, status_message])
 
                 jd_file.change(fn=lambda _: [], inputs=jd_file, outputs=result_grid)
                 resume_files.change(fn=lambda _: [], inputs=resume_files, outputs=result_grid)
 
+                gr.Markdown("<hr>")
+
             with gr.TabItem("📂 JD Parser"):
-                gr.Markdown("### Extract structured info and skills from a JD.")
-                input_mode = gr.Radio(choices=["Upload File", "Paste Text"], label="Select JD Input Mode", value="Upload File")
+                input_mode = gr.Radio(["Upload File", "Paste Text"], label="Select JD Input Mode", value="Upload File")
                 file_input = gr.File(file_types=[".pdf", ".docx", ".txt"], visible=True, label="📁 Upload JD")
                 text_input = gr.Textbox(lines=10, label="📜 Paste JD Content", visible=False)
                 title_out = gr.Markdown()
                 summary_out = gr.Markdown()
                 submit_btn = gr.Button("Submit")
 
-                def toggle_inputs(mode):
-                    return (gr.update(visible=True), gr.update(visible=False)) if mode == "Upload File" else (gr.update(visible=False), gr.update(visible=True))
-
-                input_mode.change(fn=toggle_inputs, inputs=input_mode, outputs=[file_input, text_input])
+                input_mode.change(fn=lambda m: (gr.update(visible=m == "Upload File"), gr.update(visible=m == "Paste Text")),
+                                  inputs=input_mode, outputs=[file_input, text_input])
                 submit_btn.click(fn=process_jd, inputs=[input_mode, file_input, text_input], outputs=[title_out, summary_out])
 
-    def validate(code):
-        if code == "1234":
-            return gr.update(visible=True), gr.update(visible=False), gr.update(visible=False)
-        else:
-            return gr.update(visible=False), gr.update(visible=True), gr.update(visible=True, value="❌ Invalid code. Please try again.")
+    login_btn.click(fn=lambda code: (gr.update(visible=True), gr.update(visible=False), gr.update(visible=False))
+                    if code == "1234" else (gr.update(visible=False), gr.update(visible=True), gr.update(visible=True, value="❌ Invalid code.")),
+                    inputs=access_code, outputs=[main_ui, login_ui, login_error])
 
-    login_btn.click(fn=validate, inputs=access_code, outputs=[main_ui, login_ui, login_error])
-
-# ========== Hugging Face Compatible Mount ==========
-def create_app():
-    fastapi_app = FastAPI()
-
-    @fastapi_app.get("/download")
-    def download():
-        excel_io, filename = export_to_excel_memory()
-        if not excel_io:
-            return {"error": "No data to export"}
-        return StreamingResponse(
-            excel_io,
-            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={"Content-Disposition": f'attachment; filename="{filename}"'}
-        )
-
-    return gr.mount_gradio_app(fastapi_app, main_app, path="/")
-
-# ✅ Final app required by Hugging Face runtime
-app = create_app()
+# ========== Final Launch ==========
+main_app.launch()
