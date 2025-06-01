@@ -13,6 +13,20 @@ from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 from sentence_transformers import SentenceTransformer
 
+# ========== FastAPI Setup (MUST BE AT TOP) ==========
+app = FastAPI()
+
+@app.get("/download")
+def download_excel():
+    excel_io, filename = export_to_excel_memory()
+    if not excel_io:
+        return {"error": "No data to export"}
+    return StreamingResponse(
+        excel_io,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
+
 # ========== Local Modules ==========
 from jd_parser.extractor import extract_text_from_pdf, extract_text_from_docx, extract_text_from_txt
 from jd_parser.field_extractor import extract_fields_from_text
@@ -20,10 +34,9 @@ from jd_parser.skill_matcher import match_skills
 from resume_matcher.matcher import compare_jd_resume as ai_compare_jd_resume
 
 # ========== Environment Setup ==========
-os.environ["CUDA_VISIBLE_DEVICES"] = ""  # Disable GPU
+os.environ["CUDA_VISIBLE_DEVICES"] = ""
 print(f"\n===== SmartScreen.AI Launched at {datetime.now()} =====\n")
 
-# Load spaCy
 try:
     nlp = spacy.load("en_core_web_sm")
 except:
@@ -31,7 +44,6 @@ except:
     subprocess.run(["python", "-m", "spacy", "download", "en_core_web_sm"])
     nlp = spacy.load("en_core_web_sm")
 
-# Load model (use .device instead of _target_device)
 model = SentenceTransformer("all-mpnet-base-v2", device="cpu")
 print(f"✅ Model loaded on: {model.device}")
 model.encode(["SmartScreen.AI Warm-up"], convert_to_tensor=True)
@@ -225,19 +237,5 @@ with gr.Blocks(title="SmartScreen.AI") as main_app:
 
     login_btn.click(fn=validate, inputs=access_code, outputs=[main_ui, login_ui, login_error])
 
-# ========== FastAPI for Excel Download ==========
-app = FastAPI()
-
-@app.get("/download")
-def download_excel():
-    excel_io, filename = export_to_excel_memory()
-    if not excel_io:
-        return {"error": "No data to export"}
-
-    return StreamingResponse(
-        excel_io,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
-    )
-
+# ========== Mount Gradio ==========
 app = gr.mount_gradio_app(app, main_app, path="/")
