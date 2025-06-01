@@ -4,18 +4,17 @@ import torch
 from resume_matcher.utils import extract_mobile, extract_email, clean_skills
 from jd_parser.skill_matcher import match_skills
 import spacy
+import time
 
 # Load spaCy NLP model for fallback extraction
 nlp = spacy.load("en_core_web_sm")
 
-# Load SentenceTransformer model with GPU fallback
+# ✅ Load model globally (not inside any function)
 try:
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    model = SentenceTransformer("all-mpnet-base-v2", device=device)
-except RuntimeError:
-    print("⚠️ CUDA failed — switching to CPU fallback.")
-    device = "cpu"
-    model = SentenceTransformer("all-mpnet-base-v2", device=device)
+    model = SentenceTransformer("all-mpnet-base-v2", device="cuda")
+except RuntimeError as e:
+    print("⚠️ CUDA failed — likely unsupported GPU. Using CPU instead.")
+    model = SentenceTransformer("all-mpnet-base-v2", device="cpu")
 
 # Expand synonyms for resume skill variants
 SYNONYM_MAP = {
@@ -79,14 +78,16 @@ def fuzzy_skill_match(jd_skills, resume_text):
 
     return matched, unmatched
 
-def compare_jd_resume(jd_text, resume_text):
-    try:
+def compare_jd_resume(jd_text, resume_text, jd_embedding=None):
+    # ✅ Avoid reprocessing JD embedding
+    if jd_embedding is None:
         jd_embedding = model.encode(jd_text, convert_to_numpy=True)
+
+    try:
         resume_embedding = model.encode(resume_text, convert_to_numpy=True)
     except RuntimeError:
         print("❌ GPU fallback retrying on CPU.")
         model._target_device = torch.device("cpu")
-        jd_embedding = model.encode(jd_text, convert_to_numpy=True)
         resume_embedding = model.encode(resume_text, convert_to_numpy=True)
 
     sim_score = float(cosine_similarity([jd_embedding], [resume_embedding])[0][0])
@@ -97,9 +98,8 @@ def compare_jd_resume(jd_text, resume_text):
 
     skill_score = round((len(matched_fuzzy) / max(1, len(jd_skills))) * 10, 2)
     final_score = round((sim_score_normalized * 0.2) + (skill_score * 0.8), 2)
-    skill_match_ratio = len(matched_fuzzy) / max(1, len(matched_fuzzy) + len(missing_fuzzy))
-    # ✅ Shortlist logic with tiered thresholds based on number of skills matched
-# Calculate skill match ratio: % of JD skills found in resume
+
+    # Calculate skill match ratio: % of JD skills found in resume
     skill_match_ratio = len(matched_fuzzy) / max(1, len(jd_skills))
 
     # Final shortlist symbol based on ratio
@@ -116,11 +116,11 @@ def compare_jd_resume(jd_text, resume_text):
     missing_strict = sorted(set(jd_skills) - set(matched_strict))
 
     return {
-    "score": final_score,
-    "jd_skills": sorted(jd_skills),
-    "strengths": matched_strict,
-    "gaps": missing_strict,
-    "shortlist": shortlist,
-    "mobile": extract_mobile(resume_text),
-    "email": extract_email(resume_text)
-}
+        "score": final_score,
+        "jd_skills": sorted(jd_skills),
+        "strengths": matched_strict,
+        "gaps": missing_strict,
+        "shortlist": shortlist,
+        "mobile": extract_mobile(resume_text),
+        "email": extract_email(resume_text)
+    }

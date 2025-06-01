@@ -11,3 +11,4 @@ python-docx  # for .docx
 PyMuPDF       # for PDF (imported as `fitz`)
 # Utility
 pandas
+openpyxl
