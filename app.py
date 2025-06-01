@@ -1,12 +1,30 @@
-import gradio as gr
+# ========== Standard Library ==========
 import os
-from io import BytesIO
-import spacy
 import time
+from io import BytesIO
 from datetime import datetime
+import concurrent.futures
 
+# ========== Third-Party Libraries ==========
+import gradio as gr
+import pandas as pd
+import spacy
+from fastapi import FastAPI
+from fastapi.responses import StreamingResponse
+from starlette.responses import FileResponse as StarletteFileResponse
+from sentence_transformers import SentenceTransformer
+
+# ========== Local Modules ==========
+from jd_parser.extractor import extract_text_from_pdf, extract_text_from_docx, extract_text_from_txt
+from jd_parser.field_extractor import extract_fields_from_text
+from jd_parser.skill_matcher import match_skills
+from resume_matcher.matcher import compare_jd_resume as ai_compare_jd_resume
+
+# ========== Environment Setup ==========
+os.environ["CUDA_VISIBLE_DEVICES"] = "" # ⛔ Prevents GPU usage due to sm_120 incompatibility
 print(f"\n===== SmartScreen.AI Launched at {datetime.now()} =====\n")
 
+# Load spaCy model
 try:
     nlp = spacy.load("en_core_web_sm")
 except:
@@ -14,21 +32,15 @@ except:
     subprocess.run(["python", "-m", "spacy", "download", "en_core_web_sm"])
     nlp = spacy.load("en_core_web_sm")
 
-# ✅ Warm-up model once to prevent cold start
-from sentence_transformers import SentenceTransformer
-try:
-    from resume_matcher import matcher
-    matcher.model = SentenceTransformer("all-mpnet-base-v2", device="cpu")
-    matcher.model.encode(["SmartScreen.AI Warm-up"], convert_to_tensor=True)
-    print("🚀 Model preloaded successfully\n")
-except Exception as e:
-    print(f"❌ Model warm-up failed: {e}\n")
+# Force CPU usage for model
+model = SentenceTransformer("all-mpnet-base-v2", device="cpu")
+print(f"✅ Model loaded on: {model._target_device}")
+model.encode(["SmartScreen.AI Warm-up"], convert_to_tensor=True)
 
-from jd_parser.extractor import extract_text_from_pdf, extract_text_from_docx, extract_text_from_txt
-from jd_parser.field_extractor import extract_fields_from_text
-from jd_parser.skill_matcher import match_skills
-from resume_matcher.matcher import compare_jd_resume as ai_compare_jd_resume
+# ========== Global State ==========
+current_data = []
 
+# ========== Core Functions ==========
 def clean_skills(raw_skills):
     return sorted(set(s.strip().title() for s in raw_skills))
 
@@ -36,12 +48,7 @@ def extract_text(file):
     start = time.time()
     ext = os.path.splitext(file.name)[-1].lower()
     try:
-        if isinstance(file, str) or os.path.exists(file.name):
-            with open(file.name, "rb") as f:
-                raw_bytes = f.read()
-        else:
-            raw_bytes = file.read()
-
+        raw_bytes = file.read() if not os.path.exists(file.name) else open(file.name, "rb").read()
         if not raw_bytes:
             result = "❌ Failed to read file: File stream is empty."
         elif ext == ".pdf":
@@ -57,6 +64,54 @@ def extract_text(file):
 
     print(f"📄 Extracted {file.name} in {time.time() - start:.2f} seconds")
     return result
+
+def export_to_excel_memory():
+    global current_data
+    if not current_data:
+        return None, None
+
+    headers = ["Resume", "Mobile", "Email", "Score (/10)", "Matching Skills", "Match Recommendation"]
+    df = pd.DataFrame(current_data, columns=headers)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"TopMatches_{timestamp}.xlsx"
+    print(f"📊 Exporting results to {filename} (in-memory)...")
+
+    excel_io = BytesIO()
+    df.to_excel(excel_io, index=False, engine='openpyxl')
+    excel_io.seek(0)
+    return excel_io, filename
+
+def get_download_url():
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"TopMatches_{timestamp}.xlsx"
+    return f"""
+        <a id=\"auto-download-link\" style=\"display:none\"></a>
+        <button onclick=\"
+            fetch('/download').then(r => r.blob()).then(blob => {{
+                const url = window.URL.createObjectURL(blob);
+                const a = document.getElementById('auto-download-link');
+                a.href = url;
+                a.download = '{filename}';
+                a.click();
+                window.URL.revokeObjectURL(url);
+            }})\"
+            style=\"
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                padding: 10px 20px;
+                background-color: #1D6F42;
+                color: white;
+                font-weight: bold;
+                border: none;
+                border-radius: 6px;
+                cursor: pointer;
+                font-size: 15px;\"
+        >
+            <img src=\"https://img.icons8.com/color/24/000000/ms-excel.png\" style=\"width:20px; height:20px;\" />
+            Download Excel
+        </button>
+    """
 
 def process_jd(input_mode, file, text_input):
     if input_mode == "Upload File" and file:
@@ -90,10 +145,8 @@ def process_jd(input_mode, file, text_input):
     title = f"📌 JD Summary: {source} | Role: {fields['role'] or 'N/A'}"
     return title, summary
 
-import concurrent.futures
-from resume_matcher.matcher import model
-
 def compare_jd_multiple_resumes(jd_file, resume_files):
+    global current_data
     if not jd_file or not resume_files:
         return [["❌ JD or Resumes missing", "", "", "", "", ""]], ""
 
@@ -107,28 +160,37 @@ def compare_jd_multiple_resumes(jd_file, resume_files):
     def process_resume(resume_file):
         resume_text = extract_text(resume_file)
         if resume_text.startswith("❌"):
-            return [os.path.basename(resume_file.name), "❌ Error", "", 0, resume_text, "❌"]
+            return [os.path.basename(resume_file.name), "❌ Error", "", 0, resume_text, "🔴 Reject"]
         result = ai_compare_jd_resume(jd_text, resume_text, jd_embedding=jd_embedding)
+        score = result["score"]
+        if score >= 5:
+            label = "🟢 Good Match"
+        elif 3 < score < 5:
+            label = "🟠 Review"
+        else:
+            label = "🔴 Reject"
         return [
             os.path.basename(resume_file.name),
             result["mobile"],
             result["email"],
-            result["score"],
+            score,
             ", ".join(result["strengths"]),
-            result["shortlist"]
+            label
         ]
 
     start = time.time()
     with concurrent.futures.ThreadPoolExecutor() as executor:
         results = list(executor.map(process_resume, resume_files))
-    duration_msg = f"✅ Ranked {len(resume_files)} resumes in {time.time() - start:.2f} seconds"
+    duration_msg = f"✅ Ranked {len(results)} resumes in {time.time() - start:.2f} seconds"
     print(duration_msg)
 
-    return sorted(results, key=lambda x: x[3], reverse=True), duration_msg
+    current_data = sorted(results, key=lambda x: x[3], reverse=True)
+    return current_data, duration_msg
 
 def dummy_ping():
     return "✅ SmartScreen.AI is alive"
 
+# ========== Gradio UI ==========
 with gr.Blocks(title="SmartScreen.AI") as main_app:
     with gr.Group(visible=True) as login_ui:
         access_code = gr.Textbox(label="🔐 Enter Access Code", type="password")
@@ -143,18 +205,24 @@ with gr.Blocks(title="SmartScreen.AI") as main_app:
                 🧠 AI-powered resume ranking — <i>helps you identify top matches</i>.
                 </h3>
                 """)
+
                 jd_file = gr.File(label="📁 Upload JD", file_types=[".pdf", ".docx", ".txt"])
                 resume_files = gr.File(label="📄 Upload Resumes", file_types=[".pdf", ".docx", ".txt"], file_count="multiple")
-                with gr.Row():
-                    compare_btn = gr.Button("Compare and Rank", variant="primary")
-                result_grid = gr.Dataframe(headers=["Resume", "Mobile","Email", "Score (/10)", "Matching Skills", "Shortlist?"], row_count=3)
+
+                compare_btn = gr.Button("Compare and Rank", variant="primary")
+                result_grid = gr.Dataframe(headers=["Resume", "Mobile", "Email", "Score (/10)", "Matching Skills", "Match Recommendation"], row_count=3)
                 status_message = gr.Markdown(visible=True)
+
                 compare_btn.click(compare_jd_multiple_resumes, inputs=[jd_file, resume_files], outputs=[result_grid, status_message])
+
+                download_html = gr.HTML(get_download_url())
+
                 gr.Markdown("""
                 <div style='background-color:#f0f0f0; padding:10px; border-radius:8px; text-align:center; font-weight:bold; color:#333; font-size:15px;'>
                 🔐 Files are processed in-memory and never stored.
                 </div>
                 """)
+
                 jd_file.change(fn=lambda _: [], inputs=jd_file, outputs=result_grid)
                 resume_files.change(fn=lambda _: [], inputs=resume_files, outputs=result_grid)
 
@@ -181,7 +249,25 @@ with gr.Blocks(title="SmartScreen.AI") as main_app:
 
     login_btn.click(fn=validate, inputs=access_code, outputs=[main_ui, login_ui, login_error])
 
-# ✅ Launch SmartScreen.AI only
+# ========== FastAPI Server ==========
+app = FastAPI()
+
+@app.get("/download")
+def download_excel():
+    excel_io, filename = export_to_excel_memory()
+    if not excel_io:
+        return {"error": "No data to export"}
+
+    return StreamingResponse(
+        excel_io,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
+
+app = gr.mount_gradio_app(app, main_app, path="/")
+
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 7860))
-    main_app.launch(server_name="0.0.0.0", server_port=port, show_api=False)
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=7860)
+
+main_app.launch(server_name="0.0.0.0", server_port=7860, show_api=False, app=app)
