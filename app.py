@@ -11,7 +11,6 @@ import pandas as pd
 import spacy
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
-from starlette.responses import FileResponse as StarletteFileResponse
 from sentence_transformers import SentenceTransformer
 
 # ========== Local Modules ==========
@@ -21,10 +20,10 @@ from jd_parser.skill_matcher import match_skills
 from resume_matcher.matcher import compare_jd_resume as ai_compare_jd_resume
 
 # ========== Environment Setup ==========
-os.environ["CUDA_VISIBLE_DEVICES"] = "" # ⛔ Prevents GPU usage due to sm_120 incompatibility
+os.environ["CUDA_VISIBLE_DEVICES"] = ""  # Disable GPU
 print(f"\n===== SmartScreen.AI Launched at {datetime.now()} =====\n")
 
-# Load spaCy model
+# Load spaCy
 try:
     nlp = spacy.load("en_core_web_sm")
 except:
@@ -32,9 +31,9 @@ except:
     subprocess.run(["python", "-m", "spacy", "download", "en_core_web_sm"])
     nlp = spacy.load("en_core_web_sm")
 
-# Force CPU usage for model
+# Load model (use .device instead of _target_device)
 model = SentenceTransformer("all-mpnet-base-v2", device="cpu")
-print(f"✅ Model loaded on: {model._target_device}")
+print(f"✅ Model loaded on: {model.device}")
 model.encode(["SmartScreen.AI Warm-up"], convert_to_tensor=True)
 
 # ========== Global State ==========
@@ -45,25 +44,21 @@ def clean_skills(raw_skills):
     return sorted(set(s.strip().title() for s in raw_skills))
 
 def extract_text(file):
-    start = time.time()
     ext = os.path.splitext(file.name)[-1].lower()
     try:
         raw_bytes = file.read() if not os.path.exists(file.name) else open(file.name, "rb").read()
         if not raw_bytes:
-            result = "❌ Failed to read file: File stream is empty."
-        elif ext == ".pdf":
-            result = extract_text_from_pdf(BytesIO(raw_bytes))
+            return "❌ Failed to read file: File stream is empty."
+        if ext == ".pdf":
+            return extract_text_from_pdf(BytesIO(raw_bytes))
         elif ext == ".docx":
-            result = extract_text_from_docx(BytesIO(raw_bytes))
+            return extract_text_from_docx(BytesIO(raw_bytes))
         elif ext == ".txt":
-            result = extract_text_from_txt(BytesIO(raw_bytes))
+            return extract_text_from_txt(BytesIO(raw_bytes))
         else:
-            result = "❌ Unsupported file type"
+            return "❌ Unsupported file type"
     except Exception as e:
-        result = f"❌ Failed to read file: {str(e)}"
-
-    print(f"📄 Extracted {file.name} in {time.time() - start:.2f} seconds")
-    return result
+        return f"❌ Failed to read file: {str(e)}"
 
 def export_to_excel_memory():
     global current_data
@@ -80,38 +75,6 @@ def export_to_excel_memory():
     df.to_excel(excel_io, index=False, engine='openpyxl')
     excel_io.seek(0)
     return excel_io, filename
-
-def get_download_url():
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"TopMatches_{timestamp}.xlsx"
-    return f"""
-        <a id=\"auto-download-link\" style=\"display:none\"></a>
-        <button onclick=\"
-            fetch('/download').then(r => r.blob()).then(blob => {{
-                const url = window.URL.createObjectURL(blob);
-                const a = document.getElementById('auto-download-link');
-                a.href = url;
-                a.download = '{filename}';
-                a.click();
-                window.URL.revokeObjectURL(url);
-            }})\"
-            style=\"
-                display: flex;
-                align-items: center;
-                gap: 8px;
-                padding: 10px 20px;
-                background-color: #1D6F42;
-                color: white;
-                font-weight: bold;
-                border: none;
-                border-radius: 6px;
-                cursor: pointer;
-                font-size: 15px;\"
-        >
-            <img src=\"https://img.icons8.com/color/24/000000/ms-excel.png\" style=\"width:20px; height:20px;\" />
-            Download Excel
-        </button>
-    """
 
 def process_jd(input_mode, file, text_input):
     if input_mode == "Upload File" and file:
@@ -163,12 +126,7 @@ def compare_jd_multiple_resumes(jd_file, resume_files):
             return [os.path.basename(resume_file.name), "❌ Error", "", 0, resume_text, "🔴 Reject"]
         result = ai_compare_jd_resume(jd_text, resume_text, jd_embedding=jd_embedding)
         score = result["score"]
-        if score >= 5:
-            label = "🟢 Good Match"
-        elif 3 < score < 5:
-            label = "🟠 Review"
-        else:
-            label = "🔴 Reject"
+        label = "🟢 Good Match" if score >= 5 else "🟠 Review" if score > 3 else "🔴 Reject"
         return [
             os.path.basename(resume_file.name),
             result["mobile"],
@@ -187,9 +145,6 @@ def compare_jd_multiple_resumes(jd_file, resume_files):
     current_data = sorted(results, key=lambda x: x[3], reverse=True)
     return current_data, duration_msg
 
-def dummy_ping():
-    return "✅ SmartScreen.AI is alive"
-
 # ========== Gradio UI ==========
 with gr.Blocks(title="SmartScreen.AI") as main_app:
     with gr.Group(visible=True) as login_ui:
@@ -200,11 +155,7 @@ with gr.Blocks(title="SmartScreen.AI") as main_app:
     with gr.Group(visible=False) as main_ui:
         with gr.Tabs():
             with gr.TabItem("Resume Match Scores for Selected JD"):
-                gr.Markdown("""
-                <h3 style='text-align: center; font-weight: 700; font-size: 20px; margin-bottom: 10px; color: white;'>
-                🧠 AI-powered resume ranking — <i>helps you identify top matches</i>.
-                </h3>
-                """)
+                gr.Markdown("<h3 style='text-align: center;'>🧠 AI-powered Resume Ranking</h3>")
 
                 jd_file = gr.File(label="📁 Upload JD", file_types=[".pdf", ".docx", ".txt"])
                 resume_files = gr.File(label="📄 Upload Resumes", file_types=[".pdf", ".docx", ".txt"], file_count="multiple")
@@ -215,19 +166,44 @@ with gr.Blocks(title="SmartScreen.AI") as main_app:
 
                 compare_btn.click(compare_jd_multiple_resumes, inputs=[jd_file, resume_files], outputs=[result_grid, status_message])
 
-                download_html = gr.HTML(get_download_url())
-
-                gr.Markdown("""
-                <div style='background-color:#f0f0f0; padding:10px; border-radius:8px; text-align:center; font-weight:bold; color:#333; font-size:15px;'>
-                🔐 Files are processed in-memory and never stored.
-                </div>
+                download_html = gr.HTML("""
+                <button onclick=\"
+                    fetch('/download')
+                    .then(resp => resp.blob())
+                    .then(blob => {
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = 'TopMatches.xlsx';
+                        a.click();
+                        window.URL.revokeObjectURL(url);
+                    });
+                \"
+                style=\"
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                padding: 10px 20px;
+                background-color: #1D6F42;
+                color: white;
+                font-weight: bold;
+                border: none;
+                border-radius: 6px;
+                cursor: pointer;
+                font-size: 15px;\"
+        >
+            <img src=\"https://img.icons8.com/color/24/000000/ms-excel.png\" style=\"width:20px; height:20px;\" />
+            Download Excel
+        </button>
                 """)
+
+                gr.Markdown("<div style='text-align:center; font-size:14px;'>🔐 In-memory only. No data stored.</div>")
 
                 jd_file.change(fn=lambda _: [], inputs=jd_file, outputs=result_grid)
                 resume_files.change(fn=lambda _: [], inputs=resume_files, outputs=result_grid)
 
             with gr.TabItem("📂 JD Parser"):
-                gr.Markdown("### Extract structured info and skills from a JD.\n🔐 Files are processed in-memory and never stored.")
+                gr.Markdown("### Extract structured info and skills from a JD.")
                 input_mode = gr.Radio(choices=["Upload File", "Paste Text"], label="Select JD Input Mode", value="Upload File")
                 file_input = gr.File(file_types=[".pdf", ".docx", ".txt"], visible=True, label="📁 Upload JD")
                 text_input = gr.Textbox(lines=10, label="📜 Paste JD Content", visible=False)
@@ -249,7 +225,7 @@ with gr.Blocks(title="SmartScreen.AI") as main_app:
 
     login_btn.click(fn=validate, inputs=access_code, outputs=[main_ui, login_ui, login_error])
 
-# ========== FastAPI Server ==========
+# ========== FastAPI for Excel Download ==========
 app = FastAPI()
 
 @app.get("/download")
@@ -266,8 +242,7 @@ def download_excel():
 
 app = gr.mount_gradio_app(app, main_app, path="/")
 
+# ✅ Add this for LOCAL testing only
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=7860)
-
-main_app.launch(server_name="0.0.0.0", server_port=7860, show_api=False, app=app)
