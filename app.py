@@ -13,7 +13,7 @@ from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 from sentence_transformers import SentenceTransformer
 
-# ========== FastAPI Setup (MUST BE AT TOP) ==========
+# ========== FastAPI Setup (Must be first) ==========
 app = FastAPI()
 
 @app.get("/download")
@@ -237,5 +237,8 @@ with gr.Blocks(title="SmartScreen.AI") as main_app:
 
     login_btn.click(fn=validate, inputs=access_code, outputs=[main_ui, login_ui, login_error])
 
-# ========== Mount Gradio ==========
+# ========== Mount Gradio App ==========
 app = gr.mount_gradio_app(app, main_app, path="/")
+
+if __name__ == "__main__":
+    pass  # This line helps prevent early termination in Spaces runtime
