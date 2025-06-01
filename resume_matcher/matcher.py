@@ -10,8 +10,11 @@ import time
 nlp = spacy.load("en_core_web_sm")
 
 # ✅ Load model globally (not inside any function)
-device = "cuda" if torch.cuda.is_available() else "cpu"
-model = SentenceTransformer("all-mpnet-base-v2", device=device)
+try:
+    model = SentenceTransformer("all-mpnet-base-v2", device="cuda")
+except RuntimeError as e:
+    print("⚠️ CUDA failed — likely unsupported GPU. Using CPU instead.")
+    model = SentenceTransformer("all-mpnet-base-v2", device="cpu")
 
 # Expand synonyms for resume skill variants
 SYNONYM_MAP = {

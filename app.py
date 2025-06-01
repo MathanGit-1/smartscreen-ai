@@ -3,6 +3,9 @@ import os
 from io import BytesIO
 import spacy
 import time
+from datetime import datetime
+
+print(f"\n===== SmartScreen.AI Launched at {datetime.now()} =====\n")
 
 try:
     nlp = spacy.load("en_core_web_sm")
@@ -11,6 +14,15 @@ except:
     subprocess.run(["python", "-m", "spacy", "download", "en_core_web_sm"])
     nlp = spacy.load("en_core_web_sm")
 
+# ✅ Warm-up model once to prevent cold start
+from sentence_transformers import SentenceTransformer
+try:
+    from resume_matcher import matcher
+    matcher.model = SentenceTransformer("all-mpnet-base-v2", device="cpu")
+    matcher.model.encode(["SmartScreen.AI Warm-up"], convert_to_tensor=True)
+    print("🚀 Model preloaded successfully\n")
+except Exception as e:
+    print(f"❌ Model warm-up failed: {e}\n")
 
 from jd_parser.extractor import extract_text_from_pdf, extract_text_from_docx, extract_text_from_txt
 from jd_parser.field_extractor import extract_fields_from_text
@@ -20,7 +32,6 @@ from resume_matcher.matcher import compare_jd_resume as ai_compare_jd_resume
 def clean_skills(raw_skills):
     return sorted(set(s.strip().title() for s in raw_skills))
 
-# ✅ Fully in-memory extractor with error handling
 def extract_text(file):
     start = time.time()
     ext = os.path.splitext(file.name)[-1].lower()
@@ -34,13 +45,10 @@ def extract_text(file):
         if not raw_bytes:
             result = "❌ Failed to read file: File stream is empty."
         elif ext == ".pdf":
-            from jd_parser.extractor import extract_text_from_pdf
             result = extract_text_from_pdf(BytesIO(raw_bytes))
         elif ext == ".docx":
-            from jd_parser.extractor import extract_text_from_docx
             result = extract_text_from_docx(BytesIO(raw_bytes))
         elif ext == ".txt":
-            from jd_parser.extractor import extract_text_from_txt
             result = extract_text_from_txt(BytesIO(raw_bytes))
         else:
             result = "❌ Unsupported file type"
@@ -50,8 +58,6 @@ def extract_text(file):
     print(f"📄 Extracted {file.name} in {time.time() - start:.2f} seconds")
     return result
 
-
-# === JD Parser ===
 def process_jd(input_mode, file, text_input):
     if input_mode == "Upload File" and file:
         text = extract_text(file)
@@ -84,35 +90,24 @@ def process_jd(input_mode, file, text_input):
     title = f"📌 JD Summary: {source} | Role: {fields['role'] or 'N/A'}"
     return title, summary
 
-# === JD vs Multiple Resume Matcher ===
 import concurrent.futures
-import time
-from resume_matcher.matcher import model  # shared model
+from resume_matcher.matcher import model
 
 def compare_jd_multiple_resumes(jd_file, resume_files):
     if not jd_file or not resume_files:
-        return [["❌ JD or Resumes missing", "", "", "", "", ""]]
+        return [["❌ JD or Resumes missing", "", "", "", "", ""]], ""
 
     jd_text = extract_text(jd_file)
     if jd_text.startswith("❌"):
-        return [[jd_text, "", "", "", "", ""]]
+        return [[jd_text, "", "", "", "", ""]], ""
 
-    # ✅ Precompute JD embedding only once
     jd_embedding = model.encode(jd_text, convert_to_numpy=True)
-
     resume_files = resume_files if isinstance(resume_files, list) else [resume_files]
 
     def process_resume(resume_file):
         resume_text = extract_text(resume_file)
         if resume_text.startswith("❌"):
-            return [
-                os.path.basename(resume_file.name),
-                "❌ Error",
-                "",
-                0,
-                resume_text,
-                "❌"
-            ]
+            return [os.path.basename(resume_file.name), "❌ Error", "", 0, resume_text, "❌"]
         result = ai_compare_jd_resume(jd_text, resume_text, jd_embedding=jd_embedding)
         return [
             os.path.basename(resume_file.name),
@@ -126,13 +121,15 @@ def compare_jd_multiple_resumes(jd_file, resume_files):
     start = time.time()
     with concurrent.futures.ThreadPoolExecutor() as executor:
         results = list(executor.map(process_resume, resume_files))
-    print(f"⌛ Matched {len(resume_files)} resumes in {time.time() - start:.2f} seconds")
+    duration_msg = f"✅ Ranked {len(resume_files)} resumes in {time.time() - start:.2f} seconds"
+    print(duration_msg)
 
-    return sorted(results, key=lambda x: x[3], reverse=True)
+    return sorted(results, key=lambda x: x[3], reverse=True), duration_msg
 
+def dummy_ping():
+    return "✅ SmartScreen.AI is alive"
 
-# === Gradio App ===
-with gr.Blocks(title="SmartScreen.AI") as app:
+with gr.Blocks(title="SmartScreen.AI") as main_app:
     with gr.Group(visible=True) as login_ui:
         access_code = gr.Textbox(label="🔐 Enter Access Code", type="password")
         login_btn = gr.Button("Login")
@@ -148,16 +145,16 @@ with gr.Blocks(title="SmartScreen.AI") as app:
                 """)
                 jd_file = gr.File(label="📁 Upload JD", file_types=[".pdf", ".docx", ".txt"])
                 resume_files = gr.File(label="📄 Upload Resumes", file_types=[".pdf", ".docx", ".txt"], file_count="multiple")
-                compare_btn = gr.Button("Compare and Rank")
+                with gr.Row():
+                    compare_btn = gr.Button("Compare and Rank", variant="primary")
                 result_grid = gr.Dataframe(headers=["Resume", "Mobile","Email", "Score (/10)", "Matching Skills", "Shortlist?"], row_count=3)
-                compare_btn.click(compare_jd_multiple_resumes, inputs=[jd_file, resume_files], outputs=result_grid)
-                # 👇 Add this line below the grid
+                status_message = gr.Markdown(visible=True)
+                compare_btn.click(compare_jd_multiple_resumes, inputs=[jd_file, resume_files], outputs=[result_grid, status_message])
                 gr.Markdown("""
                 <div style='background-color:#f0f0f0; padding:10px; border-radius:8px; text-align:center; font-weight:bold; color:#333; font-size:15px;'>
                 🔐 Files are processed in-memory and never stored.
                 </div>
                 """)
-                # Reset grid when JD or resumes are cleared
                 jd_file.change(fn=lambda _: [], inputs=jd_file, outputs=result_grid)
                 resume_files.change(fn=lambda _: [], inputs=resume_files, outputs=result_grid)
 
@@ -177,13 +174,14 @@ with gr.Blocks(title="SmartScreen.AI") as app:
                 submit_btn.click(fn=process_jd, inputs=[input_mode, file_input, text_input], outputs=[title_out, summary_out])
 
     def validate(code):
-        if code == "ey2024":
+        if code == "1234":
             return gr.update(visible=True), gr.update(visible=False), gr.update(visible=False)
         else:
             return gr.update(visible=False), gr.update(visible=True), gr.update(visible=True, value="❌ Invalid code. Please try again.")
 
     login_btn.click(fn=validate, inputs=access_code, outputs=[main_ui, login_ui, login_error])
 
+# ✅ Launch SmartScreen.AI only
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 7860))  # fallback to 7860 locally
-    app.launch(server_name="0.0.0.0", server_port=port)
+    port = int(os.environ.get("PORT", 7860))
+    main_app.launch(server_name="0.0.0.0", server_port=port, show_api=False)
