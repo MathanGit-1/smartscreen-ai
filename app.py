@@ -35,6 +35,7 @@ model.encode(["SmartScreen.AI Warm-up"], convert_to_tensor=True)
 
 # ========== Global State ==========
 current_data = []
+excel_ready = gr.State(value=False)
 
 # ========== Core Functions ==========
 def clean_skills(raw_skills):
@@ -127,18 +128,20 @@ def compare_jd_multiple_resumes(jd_file, resume_files):
 def generate_excel_download():
     if not current_data:
         print("⚠️ No data to export")
-        return None
+        return gr.update(value=None, visible=False)
 
     print(f"📊 Exporting {len(current_data)} rows to Excel...")
-    df = pd.DataFrame(current_data, columns=["Resume", "Mobile", "Email", "Score (/10)", "Matching Skills", "Match Recommendation"])
+    df = pd.DataFrame(current_data, columns=[
+        "Resume", "Mobile", "Email", "Score (/10)", "Matching Skills", "Match Recommendation"
+    ])
 
     with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
-        with pd.ExcelWriter(tmp.name, engine='xlsxwriter') as writer:
+        with pd.ExcelWriter(tmp.name, engine='openpyxl') as writer:
             df.to_excel(writer, index=False, sheet_name="Top Matches")
         tmp_path = tmp.name
 
     print(f"✅ File ready at: {tmp_path}")
-    return tmp_path
+    return gr.update(value=tmp_path, visible=True)
 
 # ========== Gradio UI ==========
 with gr.Blocks(title="SmartScreen.AI") as main_app:
@@ -158,13 +161,16 @@ with gr.Blocks(title="SmartScreen.AI") as main_app:
                 result_grid = gr.Dataframe(headers=["Resume", "Mobile", "Email", "Score (/10)", "Matching Skills", "Match Recommendation"], row_count=3)
                 status_message = gr.Markdown()
 
-                download_btn = gr.DownloadButton(label="📥 Download Excel", visible=True)
+                generate_btn = gr.Button("📥 Prepare Excel for Download")  # separate trigger
+                download_btn = gr.DownloadButton(label="⬇️ Click to Download", visible=False)
+
+                generate_btn.click(fn=generate_excel_download, inputs=[], outputs=[download_btn])
 
                 compare_btn.click(fn=compare_jd_multiple_resumes, inputs=[jd_file, resume_files], outputs=[result_grid, status_message])
                 download_btn.click(fn=generate_excel_download, inputs=[], outputs=[download_btn])
 
-                jd_file.change(fn=lambda _: [], inputs=jd_file, outputs=result_grid)
-                resume_files.change(fn=lambda _: [], inputs=resume_files, outputs=result_grid)
+                jd_file.change(fn=lambda: gr.update(visible=False), inputs=[], outputs=[download_btn])
+                resume_files.change(fn=lambda: gr.update(visible=False), inputs=[], outputs=[download_btn])
 
                 gr.Markdown("<hr>")
 
