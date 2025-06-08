@@ -82,10 +82,10 @@ def compare_jd_multiple_resumes(jd_file, resume_files):
         return [
             os.path.basename(resume_file.name),
             result["mobile"],
-            ", ".join(result["strengths"]),
-            ", ".join(result["gaps"]),
             ratio,
             result["shortlist"],
+            ", ".join(result["strengths"]),
+            ", ".join(result["gaps"]),
             percent_value
         ]
 
@@ -107,7 +107,7 @@ def generate_excel_download():
         return gr.update(value=None, visible=False)
 
     df = pd.DataFrame(current_data, columns=[
-        "Resume", "Mobile", "JD Skills Matched", "Gaps", "Match %", "Shortlist"
+        "Resume", "Mobile", "Match %", "Shortlist", "JD Skills Matched", "Gaps"
     ])
 
     with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
@@ -134,12 +134,15 @@ with gr.Blocks(title="SmartScreen.AI") as main_app:
                 compare_btn = gr.Button("🔍 Compare and Rank", variant="primary")
 
                 result_grid = gr.Dataframe(
-                    headers=["Resume", "Mobile", "JD Skills Matched", "Gaps", "Match %", "Shortlist"],
+                    headers=["Resume", "Mobile", "Match %", "Shortlist", "JD Skills Matched", "Gaps"],
                     row_count=3
                 )
                 status_message = gr.Markdown()
 
-                generate_btn = gr.Button("📥 Prepare Excel for Download")
+                generate_btn = gr.Button(
+                    value=" Prepare Excel for Download",
+                    icon="https://cdn-icons-png.flaticon.com/512/732/732220.png"  # Excel icon
+                )
                 download_btn = gr.DownloadButton(label="⬇️ Click to Download", visible=False)
 
                 generate_btn.click(fn=generate_excel_download, inputs=[], outputs=[download_btn])
