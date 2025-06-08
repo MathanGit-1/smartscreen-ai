@@ -20,6 +20,12 @@
     "office 365": ["Office 365", "Microsoft 365", "Exchange Online", "SharePoint", "Intune", "Azure AD", "Teams", "Outlook", "O365 Security", "Power Platform"],
     ".net+genai": [".NET", ".Net Core", "ASP.NET", "C#", "OOP", "Web API", "XUnit", "SQL", "SQL Server", "REST", "API Development", "CI/CD", "Unit Testing", "c#", "Python", "TensorFlow", "PyTorch", "Scikit-learn", "NumPy", "Pandas", "LLMs", "NLP", "Deep Learning", "Machine Learning", "Hugging Face", "BERT", "ML", "DL", "LangChain", "Prompt Engineering"],
     "cpq automation": ["CPQ Domain", "ETL", "ETL QA", "OLAP", "JMeter", "Robot Framework", "Python", "Java", "Selenium", "Postman", "SOAPUI", "RESTful APIs", "SOAP", "UI Automation", "API Automation", "Security Testing", "Performance Testing", "LoadRunner", "XML", "JSON", "Web Services", "SOA", "Azure", "AWS", "Cloud Testing", "CI/CD", "Docker", "Kubernetes", "Test Planning", "Test Strategy", "Test Cases", "Exploratory Testing", "Test Automation Frameworks", "Requirements Traceability", "Debugging", "Mentoring QA Team", "System Testing", "E2E Testing", "Internationalization Testing", "Accessibility Testing", "Localization Testing"],
+    "business analyst": ["Business Analysis", "Requirement Gathering", "Stakeholder Management", "User Stories", "JIRA", "Agile", "UML", "Process Flow", "Gap Analysis", "Documentation"],
+    "salesforce": ["Salesforce", "Apex", "Visualforce", "Lightning", "SOQL", "Salesforce Integration", "Salesforce Admin", "Sales Cloud", "Service Cloud"],
+    "cybersecurity": ["Information Security", "Network Security", "Firewalls", "SIEM", "SOC", "Incident Response", "NIST", "ISO 27001", "Risk Assessment", "Penetration Testing", "Ethical Hacking"],
+    "mobile developer": ["Android", "Kotlin", "Java", "iOS", "Swift", "React Native", "Flutter", "Mobile App Development", "Xcode", "Android Studio", "Mobile UI/UX"],
+    "power platform": ["Power Apps", "Power Automate", "Power BI", "Dataverse", "Canvas App", "Model-driven App", "Power Virtual Agents", "Common Data Service"],
+    "servicenow": ["ServiceNow", "ITSM", "Workflows", "Service Portal", "Catalog Items", "Client Scripts", "GlideRecord", "Business Rules", "ServiceNow Integration"],
     "others": ["Communication", "Teamwork", "Problem Solving", "Critical Thinking", "Adaptability"]
   },
 
@@ -82,7 +88,30 @@
     "c++": ["c++", "cpp"],
     "cassandra": ["cassandra", "apache cassandra"],
     "mongodb": ["mongodb", "mongo"],
-    "postgresql": ["postgresql", "postgres"]
+    "postgresql": ["postgresql", "postgres"],
+    "salesforce": ["salesforce", "sf", "sales force"],
+    "apex": ["apex", "apex language", "salesforce apex"],
+    "visualforce": ["visualforce", "vf"],
+    "lightning": ["lightning", "lightning components", "lwc"],
+    "soql": ["soql", "salesforce object query language"],
+    "servicenow": ["servicenow", "snow", "service now"],
+    "itsm": ["itsm", "it service management"],
+    "uml": ["uml", "unified modeling language"],
+    "jira": ["jira", "atlassian jira"],
+    "gap analysis": ["gap analysis", "requirement gap", "fit-gap"],
+    "powerapps": ["power apps", "powerapps", "canvas apps"],
+    "power automate": ["power automate", "flow", "ms flow"],
+    "dataverse": ["dataverse", "common data service"],
+    "soar": ["soar", "security orchestration automation response"],
+    "siem": ["siem", "security information and event management"],
+    "soc": ["soc", "security operations center"],
+    "nmap": ["nmap", "network mapper"],
+    "ethical hacking": ["ethical hacking", "penetration testing"],
+    "flutter": ["flutter", "flutter sdk"],
+    "react native": ["react native", "rn"],
+    "xcode": ["xcode", "ios ide"],
+    "android studio": ["android studio", "android ide"],
+    "mobile app development": ["mobile app development", "mobile development"]
   },
 
   "role_synonyms": {
@@ -105,8 +134,13 @@
     "ot security": ["ot security analyst", "ics security consultant", "industrial cyber security engineer", "ot cybersecurity specialist", "scada security engineer", "plc security consultant", "ot cyber risk analyst", "ics security engineer", "ot threat analyst", "industrial security consultant"],
     "office 365": ["office 365 administrator", "microsoft 365 engineer", "o365 consultant", "exchange online expert", "m365 support specialist", "office 365 migration expert", "m365 security engineer", "intune admin", "azure ad specialist", "sharepoint online consultant"],
     ".net+genai": ["gen ai .net developer", "llm .net developer", "ai .net engineer", ".net ml developer", ".net hugging face", "c# ai developer", ".net prompt engineer", "asp.net ai", "generative ai .net", "ai enabled .net engineer", ".net cognitive developer", "azure openai .net", ".net nlp developer", ".net transformer developer"],
-    "cpq automation": ["cpq engineer", "cpq automation engineer", "salesforce cpq developer", "aptus cpq engineer", "oracle cpq consultant", "cpq specialist", "cpq implementation engineer", "quote automation engineer"]
-
+    "cpq automation": ["cpq engineer", "cpq automation engineer", "salesforce cpq developer", "aptus cpq engineer", "oracle cpq consultant", "cpq specialist", "cpq implementation engineer", "quote automation engineer"],
+    "business analyst": ["business analyst", "ba", "requirement analyst", "functional analyst", "business analysis expert"],
+    "salesforce": ["salesforce developer", "salesforce admin", "salesforce consultant", "apex developer", "lightning developer", "salesforce engineer"],
+    "cybersecurity": ["cybersecurity engineer", "cyber security analyst", "infosec specialist", "network security analyst", "ethical hacker", "soc analyst", "security engineer"],
+    "mobile developer": ["android developer", "ios developer", "mobile app developer", "flutter developer", "react native developer", "swift developer", "kotlin developer"],
+    "power platform": ["powerapps developer", "power automate consultant", "power bi developer", "power platform engineer", "ms power platform specialist"],
+    "servicenow": ["servicenow developer", "servicenow consultant", "snow developer", "itsm developer", "servicenow engineer", "itsm specialist"]
   },
   "special_character_skills": ["c#", "f#", "c++"]
 }

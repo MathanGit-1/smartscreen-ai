@@ -40,7 +40,6 @@ def extract_html_css_variants(text):
 
 # ✅ Semantic fallback matcher using sentence transformers
 def semantic_skill_match(text, known_skills, threshold=0.75):
-    print("🧠 semantic_skill_match: forcing CPU encoding")
 
     sentences = text.split("\n")
     doc_embeddings = model.encode(sentences, convert_to_tensor=True, device="cpu")
@@ -91,6 +90,5 @@ def match_skills(text, skill_list=None):
     if len(matched) < 3:
         fallback = semantic_skill_match(text, skills_to_check, threshold=0.85)
         matched.update(fallback)
-        print(f"⚠️ Fallback triggered - AI matches found: {len(fallback)} - {list(fallback)[:10]}")
 
     return sorted(matched)

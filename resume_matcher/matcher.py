@@ -50,7 +50,6 @@ def fuzzy_skill_match(jd_skills, resume_text):
     matched = set()
     unmatched = set()
 
-    print("\n====== Fuzzy Skill Matching Debug ======")
     for skill in jd_skills:
         threshold = get_threshold(skill)
         skill_emb = model.encode(skill, convert_to_tensor=True)
@@ -60,19 +59,10 @@ def fuzzy_skill_match(jd_skills, resume_text):
         best_score = sims[best_idx].item()
         best_match = resume_skills[best_idx]
 
-        print(f"🔍 JD Skill: {skill}")
-        print(f"    🔗 Closest Resume Term: {best_match}")
-        print(f"    📈 Similarity Score: {best_score:.3f} (Threshold: {threshold})")
-
         if best_score >= threshold:
             matched.add(skill)
         else:
             unmatched.add(skill)
-
-    print(f"\nFuzzy Match - Matched: {len(matched)}, Unmatched: {len(unmatched)}")
-    print("Matched Skills:", sorted(matched))
-    print("Unmatched Skills:", sorted(unmatched))
-    print("=========================================\n")
 
     return matched, unmatched
 
@@ -81,11 +71,9 @@ def fuzzy_skill_match(jd_skills, resume_text):
 def compare_jd_resume(jd_text, resume_text):
     # Step 1: Extract raw skills from JD
     jd_skills_raw = match_skills(jd_text)
-    print("\n🔍 JD Raw Extracted Skills (before clean):", jd_skills_raw)
 
     # Step 2: Clean the raw skills (e.g., title case, trim, dedupe)
     jd_skills_raw = clean_skills(jd_skills_raw)
-    print("🧼 JD Cleaned Skills (after clean_skills):", jd_skills_raw)
 
     # Step 3: Dynamically construct the full valid skill set from ROLE_BASED_SKILLS and SYNONYM_MAP
     all_valid_skills = {
@@ -94,7 +82,6 @@ def compare_jd_resume(jd_text, resume_text):
         for skill in skills
     } | set(SYNONYM_MAP.keys())
 
-    print("📘 Total Valid Skills (normalized, sample):", sorted(all_valid_skills)[:30], "...")
 
     # Step 4: Try to filter JD skills using the normalized list
     jd_skills_filtered = []
@@ -102,8 +89,6 @@ def compare_jd_resume(jd_text, resume_text):
         norm = normalize_skill(s)
         if norm in all_valid_skills:
             jd_skills_filtered.append(s)
-        else:
-            print(f"⚠️ Skill filtered out: '{s}' → normalized as '{norm}' (not in valid skill set)")
 
     # Step 5: If not enough skills left after filtering, fallback to raw
     if len(jd_skills_filtered) < 3:
@@ -133,14 +118,6 @@ def compare_jd_resume(jd_text, resume_text):
     sim_score_normalized = round(sim_score * 10, 2)
 
     # Final debug info
-    print("\n====== DEBUG INFO ======")
-    print("🧠 Final JD Extracted Skills:", jd_skills)
-    print("✅ Matched Skills:", matched_skills)
-    print("❌ Gaps:", missing_skills)
-    print("📊 Match Ratio:", match_summary)
-    print("📈 Cosine Similarity Score:", sim_score_normalized)
-    print("📎 JD Skill Filtering Status:", jd_quality_flag)
-    print("=========================\n")
 
     return {
         "jd_skills": sorted(jd_skills),

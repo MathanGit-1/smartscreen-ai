@@ -19,11 +19,9 @@ from jd_parser.skill_matcher import match_skills
 from resume_matcher.matcher import compare_jd_resume
 
 # ========== Environment Setup ==========
-print(f"\n===== SmartScreen.AI Launched at {datetime.now()} =====\n")
 nlp = spacy.load("en_core_web_sm")
 model = SentenceTransformer("all-mpnet-base-v2", device="cpu")
 model.encode(["SmartScreen.AI Warm-up"], convert_to_tensor=True)
-print(f"✅ Model loaded on: {model.device}")
 
 # ========== Global State ==========
 current_data = []
@@ -34,32 +32,24 @@ def clean_skills(raw_skills):
     return sorted(set(s.strip().title() for s in raw_skills))
 
 def extract_text(file):
-    print(f"📄 Reading file: {file.name}")
     ext = os.path.splitext(file.name)[-1].lower()
     try:
         raw_bytes = file.read() if not os.path.exists(file.name) else open(file.name, "rb").read()
-        print(f"📦 Read {len(raw_bytes)} bytes from file")
         if not raw_bytes:
             return "❌ Failed to read file: File stream is empty."
 
         if ext == ".pdf":
-            print("📥 Extracting PDF content...")
             text = extract_text_from_pdf(BytesIO(raw_bytes))
         elif ext == ".docx":
-            print("📥 Extracting DOCX content...")
             text = extract_text_from_docx(BytesIO(raw_bytes))
         elif ext == ".txt":
-            print("📥 Extracting TXT content...")
             text = extract_text_from_txt(BytesIO(raw_bytes))
         else:
-            print("❌ Unsupported file type")
             return "❌ Unsupported file type"
 
-        print(f"📃 Extracted text length: {len(text)} characters")
         return text
 
     except Exception as e:
-        print(f"❌ Exception in extract_text: {str(e)}")
         return f"❌ Failed to read file: {str(e)}"
 
 # ========== Main JD vs Resumes Matching ==========
@@ -75,23 +65,18 @@ def compare_jd_multiple_resumes(jd_file, resume_files):
     resume_files = resume_files if isinstance(resume_files, list) else [resume_files]
 
     def process_resume(resume_file):
-        print(f"\n🧾 Processing resume: {resume_file.name}")
         resume_text = extract_text(resume_file)
 
         if resume_text.startswith("❌"):
-            print(f"❌ Error in resume text: {resume_text}")
             return [os.path.basename(resume_file.name), "❌ Error", "", "", "", "🔴 Reject", 0]
 
-        print("🧠 Comparing with JD...")
         result = compare_jd_resume(jd_text, resume_text)
-        print(f"📊 Result from compare_jd_resume: {result}")
 
         ratio = result["match_summary"]
 
         try:
             percent_value = int(ratio.split("(")[-1].replace("%)", ""))
         except Exception as e:
-            print(f"⚠️ Failed to parse percent from ratio: {ratio}, error: {str(e)}")
             percent_value = 0
 
         return [
@@ -114,16 +99,13 @@ def compare_jd_multiple_resumes(jd_file, resume_files):
     sorted_results = sorted(results, key=lambda x: x[-1], reverse=True)
     current_data = [r[:-1] for r in sorted_results]
 
-    print(f"✅ Ranked {len(current_data)} resumes in {elapsed:.2f} seconds")
     return current_data, f"✅ Ranked {len(current_data)} resumes in {elapsed:.2f} seconds"
 
 # ========== Excel Export ==========
 def generate_excel_download():
     if not current_data:
-        print("⚠️ No data to export")
         return gr.update(value=None, visible=False)
 
-    print(f"📊 Exporting {len(current_data)} rows to Excel...")
     df = pd.DataFrame(current_data, columns=[
         "Resume", "Mobile", "JD Skills Matched", "Gaps", "Match %", "Shortlist"
     ])
@@ -133,7 +115,6 @@ def generate_excel_download():
             df.to_excel(writer, index=False, sheet_name="Top Matches")
         tmp_path = tmp.name
 
-    print(f"✅ File ready at: {tmp_path}")
     return gr.update(value=tmp_path, visible=True)
 
 # ========== Gradio UI ==========
@@ -167,6 +148,13 @@ with gr.Blocks(title="SmartScreen.AI") as main_app:
 
                 jd_file.change(fn=lambda: gr.update(visible=False), inputs=[], outputs=[download_btn])
                 resume_files.change(fn=lambda: gr.update(visible=False), inputs=[], outputs=[download_btn])
+
+                # ✅ Privacy disclaimer footer
+                gr.Markdown("""
+                    <div style='background-color:#f0f0f0; padding:10px; border-radius:8px; text-align:center; font-weight:bold; color:#333; font-size:15px;'>
+                    🔐 All files are processed securely in-memory and never saved or stored.
+                    </div>
+                """)
 
     login_btn.click(
         fn=lambda code: (gr.update(visible=True), gr.update(visible=False), gr.update(visible=False))
