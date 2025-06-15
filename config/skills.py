@@ -12,6 +12,8 @@ ROLE_BASED_SKILLS = skills_data["skills_by_role"]
 SYNONYM_MAP = skills_data["synonyms"]
 ROLE_SYNONYMS = skills_data["role_synonyms"]
 SPECIAL_CHARACTER_SKILLS =  [s.lower() for s in skills_data["special_character_skills"]]
+ACTION_VERBS = skills_data["action_verbs"]
+EXPERIENCE_HEADERS = skills_data["experience_headers"]
 
 # Build flat master skill list from role-based mapping
 flat_skills = set()

@@ -72,30 +72,31 @@ def compare_jd_multiple_resumes(jd_file, resume_files):
 
         result = compare_jd_resume(jd_text, resume_text)
 
-        ratio = result["match_summary"]
-
         try:
-            percent_value = int(ratio.split("(")[-1].replace("%)", ""))
-        except Exception as e:
+            percent_value = round((result["weighted_score"] / result["total_skills"]) * 100)
+        except:
             percent_value = 0
 
         return [
             os.path.basename(resume_file.name),
             result["mobile"],
-            ratio,
+            result["match_summary"],  # ✅ Now includes "75% weighted (🛠️+📌 = 3.0 / 4)"
             result["shortlist"],
-            ", ".join(result["strengths"]),
+            ", ".join([
+                f"🛠️ {skill}" if result["skill_justification"].get(skill, {}).get("tag") == "🛠️ Strong Mention"
+                else f"📌 {skill}" if result["skill_justification"].get(skill, {}).get("tag") == "📌 Weak Mention"
+                else skill
+                for skill in result["strengths"]
+            ]),
             ", ".join(result["gaps"]),
-            percent_value
+            percent_value  # for sorting
         ]
-
 
     start = time.time()
     with concurrent.futures.ThreadPoolExecutor() as executor:
         results = list(executor.map(process_resume, resume_files))
     elapsed = time.time() - start
 
-    # ✅ Sort by match % (last column), then remove it before showing in grid
     sorted_results = sorted(results, key=lambda x: x[-1], reverse=True)
     current_data = [r[:-1] for r in sorted_results]
 
@@ -119,6 +120,13 @@ def generate_excel_download():
 
 # ========== Gradio UI ==========
 with gr.Blocks(title="SmartScreen.AI") as main_app:
+    # 🚀 Loading Splash
+    gr.Markdown("""
+    <div style='text-align: center; padding: 20px; font-size: 28px; font-weight: bold; color: #FF6600;'>
+        SmartScreen.Ai <span style='color:#000'>🤖</span>...
+    </div>
+    """)
+
     with gr.Group(visible=True) as login_ui:
         access_code = gr.Textbox(label="🔐 Enter Access Code", type="password")
         login_btn = gr.Button("Login")
@@ -141,7 +149,7 @@ with gr.Blocks(title="SmartScreen.AI") as main_app:
 
                 generate_btn = gr.Button(
                     value=" Prepare Excel for Download",
-                    icon="https://cdn-icons-png.flaticon.com/512/732/732220.png"  # Excel icon
+                    icon="https://cdn-icons-png.flaticon.com/512/732/732220.png"
                 )
                 download_btn = gr.DownloadButton(label="⬇️ Click to Download", visible=False)
 
@@ -152,10 +160,17 @@ with gr.Blocks(title="SmartScreen.AI") as main_app:
                 jd_file.change(fn=lambda: gr.update(visible=False), inputs=[], outputs=[download_btn])
                 resume_files.change(fn=lambda: gr.update(visible=False), inputs=[], outputs=[download_btn])
 
-                # ✅ Privacy disclaimer footer
+                # 🔐 Data Privacy Note
                 gr.Markdown("""
                     <div style='background-color:#f0f0f0; padding:10px; border-radius:8px; text-align:center; font-weight:bold; color:#333; font-size:15px;'>
                     🔐 All files are processed securely in-memory and never saved or stored.
+                    </div>
+                """)
+
+                # ✅ Icon Legend
+                gr.Markdown("""
+                    <div style='padding: 10px; font-size: 14px; color: #555; text-align: left;'>
+                        <b>Legend:</b> 🛠️ = Found in Experience section &nbsp;&nbsp;&nbsp; 📌 = Found in Skills section
                     </div>
                 """)
 

@@ -1,29 +1,25 @@
-# ==================== Imports ====================
 from sentence_transformers import SentenceTransformer, util
 import torch
-import re
 import spacy
 
 from resume_matcher.utils import extract_mobile, extract_email, clean_skills
 from resume_matcher.skill_helpers import normalize_skill, apply_reverse_synonyms, expand_synonyms
 from jd_parser.skill_matcher import match_skills
-from config.skills import ROLE_BASED_SKILLS, SYNONYM_MAP  # Removed SKILL_SET
+from resume_matcher.skill_depth import evaluate_skill_depth
+from config.skills import ROLE_BASED_SKILLS, SYNONYM_MAP
 
-
-# ==================== Model Initialization ====================
+# ========== Model & NLP Init ==========
 nlp = spacy.load("en_core_web_sm")
 
 try:
-    model = SentenceTransformer("all-mpnet-base-v2", device="cuda")
-    model.encode(["test"], convert_to_tensor=True)
-    print("✅ Model loaded on: CUDA")
+    model_jobbert = SentenceTransformer("TechWolf/JobBERT-v2", device="cpu")
+    model_jobbert.encode(["test"], convert_to_tensor=True)
+    print("✅ JobBERT model loaded successfully")
 except Exception as e:
-    print(f"⚠️ CUDA unavailable, falling back to CPU: {e}")
-    model = SentenceTransformer("all-mpnet-base-v2", device="cpu")
-    model.encode(["test"], convert_to_tensor=True)
+    print(f"❌ JobBERT loading failed: {e}")
+    model_jobbert = None
 
-
-# ==================== Resume Skill Extraction ====================
+# ========== Helpers ==========
 def extract_resume_skills(text, skill_list=None, min_skills=5):
     skills = clean_skills(match_skills(text, skill_list=skill_list))
     if len(skills) < min_skills:
@@ -36,23 +32,22 @@ def extract_resume_skills(text, skill_list=None, min_skills=5):
         skills += fallback
     return apply_reverse_synonyms(set(skills))
 
-
 def get_threshold(skill):
     return 0.55 if len(skill.split()) <= 2 else 0.65
 
-
-# ==================== Fuzzy Matching ====================
+# ========== Skill Matcher ==========
 def fuzzy_skill_match(jd_skills, resume_text):
     resume_skills = extract_resume_skills(resume_text)
     resume_skills = expand_synonyms(resume_skills)
-    resume_embeddings = model.encode(resume_skills, convert_to_tensor=True)
+    resume_embeddings = model_jobbert.encode(resume_skills, convert_to_tensor=True)
 
     matched = set()
     unmatched = set()
+    match_sources = {}
 
     for skill in jd_skills:
         threshold = get_threshold(skill)
-        skill_emb = model.encode(skill, convert_to_tensor=True)
+        skill_emb = model_jobbert.encode(skill, convert_to_tensor=True)
         sims = util.pytorch_cos_sim(skill_emb, resume_embeddings)[0]
 
         best_idx = torch.argmax(sims).item()
@@ -61,72 +56,93 @@ def fuzzy_skill_match(jd_skills, resume_text):
 
         if best_score >= threshold:
             matched.add(skill)
+            match_sources[skill] = best_match
         else:
             unmatched.add(skill)
 
-    return matched, unmatched
+    return matched, unmatched, match_sources
 
-
-# ==================== Final Matcher Entry Point ====================
+# ========== Main Function ==========
 def compare_jd_resume(jd_text, resume_text):
-    # Step 1: Extract raw skills from JD
     jd_skills_raw = match_skills(jd_text)
-
-    # Step 2: Clean the raw skills (e.g., title case, trim, dedupe)
     jd_skills_raw = clean_skills(jd_skills_raw)
 
-    # Step 3: Dynamically construct the full valid skill set from ROLE_BASED_SKILLS and SYNONYM_MAP
     all_valid_skills = {
         normalize_skill(skill)
         for skills in ROLE_BASED_SKILLS.values()
         for skill in skills
     } | set(SYNONYM_MAP.keys())
 
+    jd_skills_filtered = [s for s in jd_skills_raw if normalize_skill(s) in all_valid_skills]
+    jd_skills = apply_reverse_synonyms(jd_skills_filtered) if len(jd_skills_filtered) >= 3 else apply_reverse_synonyms(jd_skills_raw)
+    print(f"📌 Extracted JD Skills: {jd_skills}")
 
-    # Step 4: Try to filter JD skills using the normalized list
-    jd_skills_filtered = []
-    for s in jd_skills_raw:
-        norm = normalize_skill(s)
-        if norm in all_valid_skills:
-            jd_skills_filtered.append(s)
+    matched_skills, missing_skills, match_sources = fuzzy_skill_match(jd_skills, resume_text)
 
-    # Step 5: If not enough skills left after filtering, fallback to raw
-    if len(jd_skills_filtered) < 3:
-        jd_skills = apply_reverse_synonyms(jd_skills_raw)
-        jd_quality_flag = "⚠️ Fallback: JD had too few valid skills"
-    else:
-        jd_skills = apply_reverse_synonyms(jd_skills_filtered)
-        jd_quality_flag = "✅ JD filtered cleanly"
+    skill_depth = evaluate_skill_depth(resume_text, jd_skills)
+    print(f"🔍 Skill Justification (raw): {skill_depth}")
 
-    # Step 6: Compare JD and resume using fuzzy skill matching
-    matched_skills, missing_skills = fuzzy_skill_match(jd_skills, resume_text)
-    match_ratio = len(matched_skills) / max(1, len(jd_skills))
-    match_percent = round(match_ratio * 100)
-    match_summary = f"{len(matched_skills)} / {len(jd_skills)} matched ({match_percent}%)"
+    tooltip_justification = {}
+    for skill in jd_skills:
+        tag = skill_depth.get(skill, {}).get("tag", "◾️ No Mention")
+        trigger = match_sources.get(skill)
+        if trigger and tag != "◾️ No Mention":
+            tooltip_justification[skill] = {
+                "tag": tag,
+                "source": skill_depth[skill].get("source", ""),
+                "trigger": trigger,
+                "sentence": skill_depth[skill].get("sentence", "")
+            }
+        else:
+            tooltip_justification[skill] = {
+                "tag": tag,
+                "source": "",
+                "trigger": "",
+                "sentence": ""
+            }
 
-    # Step 7: Decide shortlist label based on match %
+    # Weighted Scoring
+    weights = {
+        "🛠️ Strong Mention": 1.0,
+        "📌 Weak Mention": 0.5,
+        "◾️ No Mention": 0.0
+    }
+
+    strong_count = 0
+    weak_count = 0
+    weighted_score = 0.0
+
+    for skill in jd_skills:
+        tag = skill_depth.get(skill, {}).get("tag", "◾️ No Mention")
+        if tag == "🛠️ Strong Mention":
+            strong_count += 1
+            weighted_score += 1.0
+        elif tag == "📌 Weak Mention":
+            weak_count += 1
+            weighted_score += 0.5
+
+    total = max(1, len(jd_skills))
+    weighted_percent = round((weighted_score / total) * 100)
+
+    # Match display in format: 75% weighted (🛠️+📌 = 3.0 / 4)
+    match_summary = f"{weighted_percent}% weighted (🛠️+📌 = {weighted_score:.1f} / {total})"
+
     shortlist = (
-        "✅ Good Match" if match_ratio >= 0.6 else
-        ("✳️ Partial Match" if match_ratio >= 0.4 else "⚠️Low match")
+        "✅ Good Match" if weighted_percent >= 60 else
+        ("✳️ Partial Match" if weighted_percent >= 40 else "⚠️ Low match")
     )
-
-    # Step 8: Semantic similarity score between entire JD and resume
-    sim_score = util.pytorch_cos_sim(
-        model.encode(jd_text, convert_to_tensor=True),
-        model.encode(resume_text, convert_to_tensor=True)
-    ).item()
-    sim_score_normalized = round(sim_score * 10, 2)
-
-    # Final debug info
 
     return {
         "jd_skills": sorted(jd_skills),
-        "strengths": sorted(matched_skills),
-        "gaps": sorted(missing_skills),
+        "strengths": sorted([s for s in jd_skills if skill_depth.get(s, {}).get("tag") in ["🛠️ Strong Mention", "📌 Weak Mention"]]),
+        "gaps": sorted([s for s in jd_skills if skill_depth.get(s, {}).get("tag") == "◾️ No Mention"]),
         "match_summary": match_summary,
         "shortlist": shortlist,
         "mobile": extract_mobile(resume_text),
         "email": extract_email(resume_text),
-        "semantic_score": sim_score_normalized
+        "skill_justification": tooltip_justification,
+        "weighted_score": weighted_score,
+        "total_skills": total,
+        "strong_count": strong_count,
+        "weak_count": weak_count
     }
-

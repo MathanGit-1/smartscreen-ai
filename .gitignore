@@ -1,0 +1,48 @@
+# === Python cache ===
+__pycache__/
+*.py[cod]
+*.pyo
+
+# === VSCode and editor settings ===
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# === Environment files ===
+.env
+.venv/
+env/
+venv/
+*.egg-info/
+
+# === Logs and runtime ===
+*.log
+*.pid
+*.sqlite3
+
+# === OS-specific ===
+.DS_Store
+Thumbs.db
+
+# === Hugging Face artifacts ===
+*.safetensors
+hf_cache/
+huggingface/
+
+# === Data and output files ===
+*.csv
+*.jsonl
+*.zip
+*.tar.gz
+*.bak
+
+# === Model checkpoints (if saved locally) ===
+checkpoints/
+saved_models/
+runs/
+outputs/
+
+# === Gradio session/cache ===
+gradio_cached_examples/
+gradio_logs/
