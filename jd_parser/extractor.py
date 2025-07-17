@@ -10,7 +10,22 @@ def extract_text_from_pdf(file_stream):
     return text.strip()
 
 def extract_text_from_docx(file_like_obj):
-    return "\n".join([para.text for para in Document(file_like_obj).paragraphs])
+    doc = Document(file_like_obj)
+    lines = []
+
+    # Extract normal paragraphs
+    for para in doc.paragraphs:
+        if para.text.strip():
+            lines.append(para.text.strip())
+
+    # Extract tables (row by row)
+    for table in doc.tables:
+        for row in table.rows:
+            row_text = " | ".join(cell.text.strip() for cell in row.cells if cell.text.strip())
+            if row_text:
+                lines.append(row_text)
+
+    return "\n".join(lines)
 
 def extract_text_from_txt(file_like_obj):
     return file_like_obj.read().decode("utf-8", errors="ignore")
